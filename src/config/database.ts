@@ -1,4 +1,4 @@
-const mysql = require("mysql2");
+import mysql from "mysql2";
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST || "localhost",
@@ -12,7 +12,7 @@ const pool = mysql.createPool({
 
 const promisePool = pool.promise();
 
-const initDatabase = async () => {
+const initDatabase = async (): Promise<void> => {
   try {
     await promisePool.execute(`
       CREATE TABLE IF NOT EXISTS users (
@@ -69,4 +69,4 @@ const initDatabase = async () => {
   }
 };
 
-module.exports = { promisePool, initDatabase };
+export { promisePool, initDatabase };

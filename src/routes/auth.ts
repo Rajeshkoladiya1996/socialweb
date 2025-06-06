@@ -1,48 +1,52 @@
-const express = require("express");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const { promisePool } = require("../config/database");
-const { authenticateToken } = require("../middleware/auth");
+import express, { Request, Response } from "express";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { promisePool } from "../config/database";
+import { authenticateToken } from "../middleware/auth";
 
 const router = express.Router();
 
-router.post("/register", async (req, res) => {
+interface AuthRequest extends Request {
+  user?: {
+    id: number;
+    username: string;
+  };
+}
+
+router.post("/register", async (req: Request, res: Response): Promise<void> => {
   try {
     const { username, email, password, bio } = req.body;
 
     if (!username || !email || !password) {
-      return res
-        .status(400)
-        .json({ error: "Username, email, and password are required" });
+      res.status(400).json({ error: "Username, email, and password are required" });
+      return;
     }
 
     if (password.length < 6) {
-      return res
-        .status(400)
-        .json({ error: "Password must be at least 6 characters long" });
+      res.status(400).json({ error: "Password must be at least 6 characters long" });
+      return;
     }
 
-    const [existingUsers] = await promisePool.execute(
+    const [existingUsers] = await promisePool.execute<any[]>(
       "SELECT id FROM users WHERE username = ? OR email = ?",
       [username, email]
     );
 
     if (existingUsers.length > 0) {
-      return res
-        .status(400)
-        .json({ error: "Username or email already exists" });
+      res.status(400).json({ error: "Username or email already exists" });
+      return;
     }
 
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
-    const [result] = await promisePool.execute(
+    const [result]: any = await promisePool.execute(
       "INSERT INTO users (username, email, password, bio) VALUES (?, ?, ?, ?)",
       [username, email, hashedPassword, bio || ""]
     );
 
     const token = jwt.sign(
-      { userId: result.insertId, username },
+      { id: result.insertId, username },
       process.env.JWT_SECRET || "your-secret-key",
       { expiresIn: "7d" }
     );
@@ -63,34 +67,38 @@ router.post("/register", async (req, res) => {
   }
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", async (req: Request, res: Response): Promise<void> => {
   try {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res
-        .status(400)
-        .json({ error: "Username and password are required" });
+      res.status(400).json({ error: "Username and password are required" });
+      return;
     }
 
-    const [users] = await promisePool.execute(
+    const [users] = await promisePool.execute<any[]>(
       "SELECT id, username, email, password, bio FROM users WHERE username = ? OR email = ?",
       [username, username]
     );
 
+
+    console.log("users",users);
+
     if (users.length === 0) {
-      return res.status(401).json({ error: "Invalid credentials" });
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
     }
 
     const user = users[0];
 
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
-      return res.status(401).json({ error: "Invalid credentials" });
+      res.status(401).json({ error: "Invalid credentials" });
+      return;
     }
-
+  console.log("secret 1 ",process.env.JWT_SECRET || "your-secret-key");
     const token = jwt.sign(
-      { userId: user.id, username: user.username },
+      { id: user.id, username: user.username },
       process.env.JWT_SECRET || "your-secret-key",
       { expiresIn: "7d" }
     );
@@ -111,15 +119,18 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.get("/me", authenticateToken, async (req, res) => {
+router.get("/me", authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const [users] = await promisePool.execute(
+    const userId = req.user?.id;
+
+    const [users] = await promisePool.execute<any[]>(
       "SELECT id, username, email, bio, avatar, created_at FROM users WHERE id = ?",
-      [req.user.id]
+      [userId]
     );
 
     if (users.length === 0) {
-      return res.status(404).json({ error: "User not found" });
+      res.status(404).json({ error: "User not found" });
+      return;
     }
 
     res.json({ user: users[0] });
@@ -129,4 +140,4 @@ router.get("/me", authenticateToken, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;
